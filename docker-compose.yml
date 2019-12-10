@@ -1,0 +1,169 @@
+##############################################################################
+#
+# Name: docker-compose.yml
+#
+# Function:
+# 	Configure the docker-ttn-dashboard collection of docker containers.
+#
+# Copyright:
+#	This file copyright (c) 2017-2019 by
+#
+#		MCCI Corporation
+#		3520 Krums Corners Road
+#		Ithaca, NY 14850
+#
+#	Distributed under the terms of the license file shipped with this
+#	collection.
+#
+# Author:
+#	Terry Moore, MCCI Corporation
+#	Based on work by Johan Stocking, The Things Network
+#
+##############################################################################
+
+#
+# Note: if you are running this manually, you must set a number of variables,
+# not least TTN_DASHBOARD_DATA, which must be the path to the top data directory
+# for these apps. If you use dashboard-ctl, this will be done for you.
+#
+# To get a list of all variables used in this file, use the following command:
+# sed -n -e 's/#.*$//'  -e 's/[^$]*${\([^-:}]*\)[-:}][^$]*/\1/p' docker-compose.yml | LC_ALL=C sort -u
+#
+# To get a list of undocumented variables, use the following command,
+# then look in the left hand column:
+#
+# comm <(sed -n -e 's/#.*$//' -e 's/[^$]*${\([^-:}]*\)[-:}][^$]*/\1/p' docker-compose.yml | LC_ALL=C sort -u)  <(sed -n -e '/^# TTN_[A-Z_0-9]*$/s/^# //p' docker-compose.yml | LC_ALL=C sort -u )
+#
+#+++
+# TTN_DASHBOARD_APACHE_FQDN
+#	The fully-qualified domain name to be served by Apache.
+#
+# TTN_DASHBOARD_AWS_DEFAULT_REGION
+# The AWS default region.
+#
+# TTN_DASHBOARD_AWS_SECRET_ACCESS_KEY
+# The AWS API secret key for backing up influxdb data.
+#
+# TTN_DASHBOARD_CERTBOT_EMAIL
+#	The email address to be used for registering with Let's Encrypt.
+#
+# TTN_DASHBOARD_CERTBOT_FQDN
+#	The domain(s) to be used by certbot when registering with Let's Encrypt.
+#
+# TTN_DASHBOARD_DATA
+#	The path to the data directory. This must end with a '/', and must either
+#	be absolute or must begin with './'. (If not, you'll get parse errors.)
+#
+# TTN_DASHBOARD_GRAFANA_ADMIN_PASSWORD
+#	The password to be used for the admin user on first login. This is ignored
+#	after the Grafana database has been built.
+#
+# TTN_DASHBOARD_GRAFANA_PROJECT_NAME
+#	The project name to be used for the emails from the administrator.
+#
+# TTN_DASHBOARD_GRAFANA_LOG_MODE
+#	Set the grafana log mode.
+#
+# TTN_DASHBOARD_GRAFANA_LOG_LEVEL
+#	Set the grafana log level (e.g. debug)
+#
+# TTN_DASHBOARD_GRAFANA_SMTP_ENABLED
+#	Set to true to enable SMTP.
+#
+# TTN_DASHBOARD_GRAFANA_SMTP_SKIP_VERIFY
+#	Set to true to disable SSL verification.
+#	Defaults to false.
+#
+# TTN_DASHBOARD_GRAFANA_INSTALL_PLUGINS
+#	A list of grafana plugins to install.
+#
+# TTN_DASHBOARD_GRAFANA_SMTP_FROM_ADDRESS
+# The "from" address for Grafana emails.
+#
+# TTN_DASHBOARD_GRAFANA_USERS_ALLOW_SIGN_UP
+#	Set to true to allow users to sign up.
+#
+# TTN_DASHBOARD_INFLUXDB_ADMIN_PASSWORD
+#	The password to be used for the admin user by influxdb. Again, this is
+#	ignored after the influxdb database has been built.
+#
+# TTN_DASHBOARD_INFLUXDB_INITIAL_DATABASE_NAME
+#	The inital database to be created on first launch of influxdb. Ignored
+#	after influxdb has been launched.
+#
+# TTN_DASHBOARD_MAIL_DOMAIN
+# the postfix mail domain.
+#
+# TTN_DASHBOARD_MAIL_HOST_NAME
+# the external FQDN for the mail host.
+#
+# TTN_DASHBOARD_MAIL_RELAY_IP
+# the mail relay machine, assuming that the real mailer is upstream from us.
+#
+# TTN_DASHBOARD_NODERED_INSTALL_PLUGINS
+#	A list of additional modules to be intalled.
+#
+# TTN_DASHBOARD_PORT_HTTP
+#	The port to listen to for HTTP. Primarily for test purposes. Defaults to
+#	80.
+#
+# TTN_DASHBOARD_PORT_HTTPS
+#	The port to listen to for HTTPS. Primarily for test purposes. Defaults to
+#	443.
+#
+# TTN_DASHBOARD_TIMEZONE
+#	The timezone to use. Defaults to GMT.
+#---
+
+# Also see apache/setup.sh, which uses some additional test variables when
+# debugging.
+#
+
+version: '3.7'
+services:
+  node-red:
+    restart: unless-stopped
+    user: "root"
+    ports:
+      - "1880:1880"
+    volumes:
+      - "${TTN_DASHBOARD_DATA}node-red:/data"
+    # nodered opens ports on influxdb so it needs to be able to talk to it.
+    links:
+      - influxdb
+    environment:
+      TZ: "${TTN_DASHBOARD_TIMEZONE:-GMT}"
+    build:
+     context: ./node-red
+     args:
+      NODERED_INSTALL_PLUGINS: "${TTN_DASHBOARD_NODERED_INSTALL_PLUGINS:-}"
+
+  influxdb:
+    restart: unless-stopped
+    image: influxdb:latest
+    volumes:
+      - "${TTN_DASHBOARD_DATA}influxdb:/var/lib/influxdb"
+    environment:
+      INFLUXDB_DB: "${TTN_DASHBOARD_INFLUXDB_INITIAL_DATABASE_NAME:-demo}"
+      INFLUXDB_INIT_PWD: "${TTN_DASHBOARD_INFLUXDB_ADMIN_PASSWORD:-!notset}"
+      INFLUXDB_BIND_ADDRESS: "influxdb:8088"
+
+  grafana:
+    restart: unless-stopped
+    image: grafana/grafana:latest
+    user: "root"
+    ports:
+      - "3000:3000"
+    volumes:
+      - "${TTN_DASHBOARD_DATA}grafana:/var/lib/grafana"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: "${TTN_DASHBOARD_GRAFANA_ADMIN_PASSWORD:-!notset}"
+      GF_LOG_MODE: "${TTN_DASHBOARD_GRAFANA_LOG_MODE:-console,file}"
+      GF_LOG_LEVEL: "${TTN_DASHBOARD_GRAFANA_LOG_LEVEL:-info}"
+      GF_INSTALL_PLUGINS: "${TTN_DASHBOARD_GRAFANA_INSTALL_PLUGINS:-}"
+      GF_USERS_ALLOW_SIGN_UP: "${TTN_DASHBOARD_GRAFANA_USERS_ALLOW_SIGN_UP:-false}"
+    # grafana opens ports on influxdb and postfix, so it needs to be able to talk to it.
+    links:
+      - influxdb
+
+### end of file ###
